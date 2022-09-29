@@ -1,15 +1,12 @@
-'''*************************************
-import all the libraries required
-'''
 import os
+import pickle
+import time
+from typing import List
+
 import matplotlib.pyplot as plt
 import pandas as pd
-#import numpy as np
-#from statsmodels.tsa.arima_model import ARIMA
 from sklearn.metrics import mean_squared_error
-import time
 import statsmodels.api as sm
-import pickle
 
 
 '''*************************************
@@ -20,10 +17,8 @@ os.chdir(data_path)
 list_flds = []
 fld_name = ''
 index_col_name = 'Month'
-file_path_in = os.path.join(data_path, 'Import_file_names.txt')
 file_path_out = os.path.join(data_path, 'output_dataset.txt')
-f_name = pd.read_csv(file_path_in, sep='\t')
-
+f_name = sorted([item for item in os.listdir(data_path) if ('csv' in item)])
 
 '''*************************************
     this loop import all data files, with dataframe name specified in the import_file_names specified
@@ -32,65 +27,38 @@ f_name = pd.read_csv(file_path_in, sep='\t')
 '''
 
 
-def preprocess_data(f_name, list_flds):
+def shorten_name(name: str) -> str:
+    concepts = ['average', 'cost', 'revenue', 'consumption']
+    sectors = [
+        'commercial', 'industrial', 'other', 
+        'residential', 'transportation', 'all',
+    ]
+    fuels = [
+        'coal', 'natural', 'gas', 
+        'petroleum', 'coke', 'liquids',
+    ]
+    short_name = '_'.join([
+        item.title() 
+        for item in name.split('_') 
+        if (item.lower() in (concepts + sectors + fuels))
+    ])
+    return short_name
 
-    # for each file
-    for index, row in f_name.iterrows():
 
-        # execute the code in a dynamic manner
-        # after execution of the code, the variables values are stored in namespeace
-        # read in file name and the dataframe name
-        print(row['pd_name'] + ':************')
-        namespace = {}
-        print('curr_pd_name = "' + row['pd_name'] + '"')
-        exec('curr_pd_name = "' + row['pd_name'] + '"', namespace)
-        print('curr_filename = "' + row['filename'] + '"')
-        exec('curr_filename = "' + row['filename'] + '"', namespace)
-        curr_filename = namespace['curr_filename']
-        curr_pd_name = namespace['curr_pd_name']
-
-        # Read in the actual file
-        curr_pd = pd.read_csv(curr_filename + '.csv', header=4)
-        # collection of pd names for display of series later
-        list_flds.append(curr_pd_name)
-        fld_name = list(curr_pd)[1]
-        # convert the value columns to numeric, not string
-        curr_pd[fld_name] = pd.to_numeric(curr_pd[fld_name], errors='coerce')
-        # rename the column with values to be the dataframe name
-        curr_pd = curr_pd.rename(index=str, columns={fld_name: curr_pd_name})
-
-        # convert the month column to datetime format
-        # convert index to datetime
-        curr_pd[index_col_name] = pd.to_datetime(curr_pd[index_col_name], format="%b %Y")
-
-        # start building up the consolidated dataframe that includes all dataframes
-        if index == 0:
-            df_all = curr_pd
-        else:
-            df_all = pd.merge(
-                df_all, 
-                curr_pd, 
-                how='outer',
-                left_on=index_col_name, 
-                right_on=index_col_name
-            )
-        print(curr_pd_name + ' done!')
-
-    # convert text to date then reorder by date
-    df_all[index_col_name] = pd.to_datetime(df_all[index_col_name], format="%b %Y")
-    df_all = df_all.sort_values(by=[index_col_name])
-
-    # handle missing values -> interpolate
-    for fld in list_flds:
-        print(fld)
-        #default_missing_val = 0.0
-        for index, row in df_all.iterrows():
-            df_all[fld] = df_all[fld].interpolate()
-
-    # Output dataset
-    df_all.to_csv(file_path_out, sep='\t', index=False)
-
-    return list_flds
+def preprocess_data(filenames: List[str]) -> pd.DataFrame:
+    dfs = []
+    for name in filenames:
+        short_name = shorten_name(name)
+        df = (
+            pd
+            .read_csv(name, header=4)
+            .set_axis(['Month', short_name], axis=1)
+            .astype({'Month': 'datetime64[ns]'})
+            .set_index('Month')
+        )
+        dfs.append(df)
+    df2 =  pd.concat(dfs, axis=1).interpolate().fillna(0.0)
+    return df2
 
 
 '''*************************************
